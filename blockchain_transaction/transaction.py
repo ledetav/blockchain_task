@@ -54,15 +54,29 @@ class Transaction:
         Подписывается хэш данных транзакции.
         После подписи обновляется финальный tx_id.
         """
-        if not self.inputs and self.signature is not None:
-            pass
-        elif self.signature is not None:
-            raise ValueError("Транзакция уже подписана.")
-        if not self.inputs and not private_key_pem:
-            pass
-        elif not private_key_pem:
-            raise ValueError("Приватный ключ необходим для подписи.")
+        # Если транзакция уже подписана (и не является Coinbase, для которой signature может быть None),
+        # выбрасываем ошибку.
+        if self.signature is not None:
+            # Для Coinbase-транзакций, если signature не None и ключ пуст, это означает,
+            # что мы пытаемся переподписать или обрабатывать уже "подписанную" (т.е. сгенерированную) Coinbase.
+            # В данном контексте, если private_key_pem пуст для Coinbase, мы просто выходим.
+            # Это соответствует ожиданию теста test_coinbase_sign_does_not_set_signature.
+            if self.is_coinbase() and private_key_pem == "":
+                return
+            else:
+                raise ValueError("Транзакция уже подписана.")
 
+        # Если это Coinbase-транзакция и private_key_pem пуст,
+        # значит, это стандартная генерация Coinbase-транзакции, которая не требует подписи пользователя.
+        # Просто выходим, не пытаясь десериализовать ключ или подписывать.
+        if self.is_coinbase() and not private_key_pem:
+            return
+
+        # Если private_key_pem пуст, но это не Coinbase-транзакция,
+        # или если это Coinbase-транзакция, но передан НЕпустой ключ (что необычно, но возможно),
+        # то нужен действительный приватный ключ для подписи.
+        if not private_key_pem:
+            raise ValueError("Приватный ключ необходим для подписи.")
 
         private_key = deserialize_private_key(private_key_pem)
         data_hash_to_sign = self._calculate_initial_hash().encode('utf-8')
